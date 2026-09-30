@@ -1,0 +1,44 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base", "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_EXTENSIONS": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "mingw", "hidden": true, "inherits": "base",
+      "cacheVariables": { "CMAKE_CXX_COMPILER": "g++" },
+      "vendor": { "jetbrains.com/clion": { "toolchain": "MinGW" } }
+    },
+    {
+      "name": "msvc", "hidden": true, "inherits": "base",
+      "cacheVariables": { "CMAKE_CXX_COMPILER": "cl" },
+      "vendor": { "jetbrains.com/clion": { "toolchain": "Visual Studio 64bit" } }
+    },
+    {
+      "name": "mingw-debug", "inherits": "mingw",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "mingw-release", "inherits": "mingw",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "msvc-debug", "inherits": "msvc",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "mingw-debug", "configurePreset": "mingw-debug" },
+    { "name": "mingw-release", "configurePreset": "mingw-release" },
+    { "name": "msvc-debug", "configurePreset": "msvc-debug" }
+  ]
+}
