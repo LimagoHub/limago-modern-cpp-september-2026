@@ -185,3 +185,6 @@ CMakeUserPresets.json
 
 # End of https://www.toptal.com/developers/gitignore/api/c++,clion+all,visualstudiocode,cmake,atmelstudio
 build/
+
+# CLion-Projektdateien der Teilprojekte (das generierte .idea/* oben gilt nur in der Wurzel)
+.idea/
