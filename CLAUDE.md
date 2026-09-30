@@ -105,6 +105,33 @@ Regeln:
 - Keine externen Abhängigkeiten außer der Standardbibliothek. Kein Boost,
   kein vcpkg, kein Test-Framework, solange ich nichts anderes sage.
 - Wo Sanitizer sinnvoll sind (Baustein 08), dafür ein eigenes Preset.
+  Das Gerüst hat bewusst keins. Ob und welches (MinGW-GCC liefert
+  libasan/libubsan üblicherweise nicht mit; MSVC kann nur
+  `/fsanitize=address`), wird erst bei Baustein 08 nach Befund
+  (`g++ -print-file-name=libasan.a`) entschieden. Kein WSL.
+- Baustein 08 darf nicht von Sanitizern abhängen. Der Kern sind
+  Codegen-Vergleiche im Compiler Explorer (Verzeichnis `godbolt/`, entsteht
+  erst dort). Die Beispiele müssen den Effekt auch lokal mit `mingw-release`
+  (`-O2`) zeigen. Im Kommentarkopf stehen beide Wege: Compiler Explorer und
+  lokaler Aufruf.
+- CLion-Toolchains heißen `MinGW` und `Visual Studio 64bit`; die Presets
+  verweisen im Vendor-Block darauf. Bei Umbenennung `templates/` anpassen.
+- Presets: `mingw-debug`, `mingw-release`, `msvc-debug` (versteckte Basen
+  `base`, `mingw`, `msvc`). Ninja muss im PATH sein, sonst nur in CLion.
+- GCC-Warnflags `-Wuse-after-free` (ab GCC 12) und `-Wdangling-reference`
+  (ab GCC 13) sind in der Vorlage, per Generator-Expression nach Version.
+- `before/` bekommt die Warnstufe aus `CMakeLists.txt` anhand des
+  Verzeichnisnamens (`before` = aus), nicht durch Anpassen der Datei.
+
+## Arbeiten mit den Vorlagen
+
+- `CMakeLists.txt` und `CMakePresets.json` sind in allen Teilprojekten
+  identisch. Änderungen nur in `templates/`, dann
+  `templates/sync-templates.ps1` (meldet Drift) und `-Apply` (verteilt).
+- Neues Teilprojekt: Vorlagen hineinkopieren (oder `-Apply`), `main.cpp`
+  anlegen, mit `templates/build-all.ps1 -Path <Pfad>` prüfen.
+- Die `.ps1`-Dateien enthalten keine Umlaute (Windows PowerShell 5.1 liest
+  UTF-8 ohne BOM als ANSI).
 
 ## Was in den Beispielen zählt
 
@@ -120,4 +147,14 @@ Regeln:
 - Kleine, thematische Commits, ein Baustein pro Commit-Serie.
 - Commit-Messages deutsch, Präfix mit Bausteinnummer, z. B.
   `01: RAII-Wrapper um FILE* als Beispiel ergänzt`
+- Gerüst und übergreifende Dateien (README, CLAUDE.md, templates/) tragen
+  das Präfix `00:`.
 - Committen nur, wenn ich es sage.
+- Pushen nur, wenn ich es sage. Nie erzwungen, nie auf andere Branches.
+
+## Stand
+
+- Gerüst fertig und gepusht (`origin/main`). Probeprojekt
+  `examples/01-ownership-raii/after/` baut in CLion mit MinGW und
+  `Visual Studio 64bit`.
+- Nächster Schritt: Baustein 01 — aber erst, wenn ich es sage.

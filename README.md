@@ -53,6 +53,10 @@ Jedes Teilprojekt wird **einzeln** geöffnet: *File → Open* und dann das Verze
 
 Die Presets setzen C++17 mit `CMAKE_CXX_EXTENSIONS=OFF`. Gebaut wird nach `build/<preset>/` im jeweiligen Teilprojekt.
 
+Voraussetzungen in CLion: Unter *Settings → Build, Execution, Deployment → Toolchains* müssen die Toolchains `MinGW` und `Visual Studio 64bit` heißen. Die Presets verweisen per Name darauf. Bei `msvc-debug` zählt die 64-Bit-Variante. Mit der 32-Bit-Toolchain baut das Preset zwar, vergleicht aber etwas anderes als `build-all.ps1`.
+
+Sanitizer gibt es im Gerüst nicht. Ob und wie sie bei Baustein 08 eingesetzt werden, hängt davon ab, was die Toolchain mitbringt. MinGW-GCC liefert `libasan` und `libubsan` üblicherweise nicht mit, MSVC kann nur AddressSanitizer. Baustein 08 baut deshalb nicht darauf auf.
+
 ### Warnstufen
 
 Im `after/`-Code gilt die hohe Warnstufe (MSVC `/W4 /permissive-`, GCC `-Wall -Wextra -Wpedantic` und je nach Version `-Wuse-after-free` und `-Wdangling-reference`). Der Code baut warnungsfrei. Im `before/`-Code ist sie abgeschaltet, weil er absichtlich Leaks und Fehler enthält. Das regelt die `CMakeLists.txt` am Verzeichnisnamen, nur für das jeweilige Target.
