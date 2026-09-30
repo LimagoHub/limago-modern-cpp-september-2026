@@ -78,6 +78,115 @@ templates\sync-templates.ps1 -Apply      # verteilt die Vorlagen in alle Teilpro
 
 ## 01 ownership-raii
 
+### Worum es geht
+
+Jede Ressource hat einen Besitzer: ein Dateihandle, ein Socket, ein Puffer, ein Mutex. Der Besitzer ist dafür verantwortlich, sie genau einmal freizugeben. Im klassischen C++ steht das nirgends im Code. Es steht in Kommentaren, in Namenskonventionen ("`create_` muss mit `destroy_` freigegeben werden") und im Kopf des Entwicklers, der die Funktion geschrieben hat. Jeder zusätzliche `return` und jede Exception ist eine Stelle, an der die Disziplin reißen kann.
+
+In modernem C++ wird der Besitzer ein Objekt, und die Freigabe passiert automatisch, wenn das Objekt verschwindet.
+
+### Grundlagen: Was du für diesen Baustein brauchst
+
+Dieser Abschnitt erklärt die Bausteine, die in den Beispielen vorkommen. Wenn du sie schon kennst, überspring ihn.
+
+#### Der Destruktor läuft immer
+
+Ein lokales Objekt wird am Ende seines Blocks zerstört, und zwar auf **jedem** Weg hinaus: normales Blockende, `return`, `break`, Exception. Dabei wird sein Destruktor aufgerufen. Das ist keine neue Sprachfunktion, das gab es schon in C++98. Neu ist nur, dass wir es konsequent als Werkzeug einsetzen.
+
+```cpp
+void f() {
+    Logger log;        // Konstruktor
+    if (fehler) return; // Destruktor von log läuft hier
+    arbeite();          // kann werfen: Destruktor läuft trotzdem
+}                       // und hier
+```
+
+#### RAII
+
+RAII steht für *Resource Acquisition Is Initialization*. Der Name ist unglücklich, die Idee ist einfach:
+
+- Die Ressource wird im **Konstruktor** erworben (Datei öffnen, Speicher holen, Mutex sperren).
+- Sie wird im **Destruktor** freigegeben.
+- Damit gilt: Die Ressource lebt genau so lange wie das Objekt.
+
+Du schreibst das `fclose` also nicht mehr an jede Ausstiegsstelle, sondern einmal in den Destruktor. Der Compiler fügt den Aufruf an allen Ausstiegsstellen ein. Du kannst ihn nicht mehr vergessen.
+
+#### Smart pointer, hier `std::unique_ptr`
+
+Ein smart pointer ist ein Objekt, das sich wie ein Zeiger benutzen lässt und zugleich Besitzer ist. `std::unique_ptr<T>` (ab C++11, Header `<memory>`) ist der einfachste:
+
+- Er besitzt genau ein Objekt. Es gibt nie zwei Besitzer.
+- Er ist **nicht kopierbar**. Der Compiler lehnt eine Kopie ab. Der Besitz kann nur weitergegeben werden (das ist Baustein 03, move).
+- Im Destruktor gibt er das Objekt frei. Standardmäßig mit `delete`.
+
+```cpp
+std::unique_ptr<Buffer> p(new Buffer(1024));
+p->fill();            // benutzt sich wie ein Zeiger
+Buffer* raw = p.get(); // rohen Zeiger ansehen, Besitz bleibt bei p
+                       // kein delete nötig
+```
+
+Ab C++14 gibt es `std::make_unique<Buffer>(1024)`. Es vermeidet das sichtbare `new`.
+
+Wichtig für die Denkweise: Ein `unique_ptr` in einer Signatur oder einem Member **sagt**, wer besitzt. Ein roher Zeiger `T*` sagt das nicht. Er kann "gehört mir", "gehört dir" oder "nur ansehen" bedeuten.
+
+#### Eigener Deleter: Ressourcen, die nicht mit `delete` enden
+
+Ein `FILE*` wird nicht mit `delete` freigegeben, sondern mit `fclose`. `unique_ptr` nimmt deshalb einen zweiten Typparameter: den **Deleter**. Er wird statt `delete` aufgerufen.
+
+```cpp
+std::unique_ptr<FILE, FileCloser> f(std::fopen(path, "r"));
+```
+
+Der Deleter muss etwas sein, das man mit dem Zeiger aufrufen kann: `FileCloser{}(ptr)`.
+
+#### Funktionsobjekt
+
+Ein Funktionsobjekt ist ein Objekt einer Klasse, die `operator()` definiert. Man ruft es wie eine Funktion auf:
+
+```cpp
+struct FileCloser {
+    void operator()(FILE* f) const { std::fclose(f); }
+};
+
+FileCloser close;
+close(handle);      // sieht aus wie ein Funktionsaufruf, ist aber ein Objekt
+```
+
+Warum nicht einfach einen Funktionszeiger `&std::fclose` als Deleter? Das geht, hat aber zwei Nachteile: Der Zeiger wird in jedem `unique_ptr` mitgespeichert, und der Aufruf ist für den Compiler schwerer zu inlinen. Ein leeres Funktionsobjekt kostet dagegen keinen Speicher, der Typ selbst legt fest, was aufgerufen wird. Außerdem kann ein Funktionsobjekt Zustand tragen, eine Funktion nicht. Das braucht man später bei Lambdas (Baustein 07) wieder, ein Lambda ist nichts anderes als ein vom Compiler erzeugtes Funktionsobjekt.
+
+#### Typalias mit `using`
+
+`using FilePtr = std::unique_ptr<FILE, FileCloser>;` ist die C++11-Schreibweise für `typedef`. Sie liest sich von links nach rechts ("FilePtr ist ...") und funktioniert auch für Templates.
+
+### Beispiel a: Datei lesen
+
+Pfad: [`examples/01-ownership-raii/a-file/before`](examples/01-ownership-raii/a-file/before/main.cpp) und [`.../after`](examples/01-ownership-raii/a-file/after/main.cpp).
+
+`read_header` öffnet eine Datei und prüft die Kopfzeile. Hier `before`:
+
+```cpp
+FILE* f = tracked_fopen(path, "r");
+if (!f) return -1;
+if (!std::fgets(out, n, f)) return -1;                // Handle bleibt offen
+if (std::strncmp(out, "SEMINAR", 7) != 0) return -1;  // Handle bleibt offen
+tracked_fclose(f);
+return 0;
+```
+
+Der Fehlerpfad vergisst das `fclose`. Der Zähler im Beispiel zeigt nach vier Aufrufen zwei offene Handles. Den Fehler findet man beim Lesen nur, wenn man bei jedem `return` nachzählt.
+
+In `after` hält ein `FilePtr` das Handle:
+
+```cpp
+FilePtr f = tracked_fopen(path, "r");
+if (!f) return false;
+if (!std::fgets(buf, sizeof buf, f.get())) return false;
+```
+
+Es gibt kein `fclose` mehr in der Funktion. Jeder Ausstieg schließt die Datei, und man kann den Fehler nicht mehr machen. Ein früher `return` ist jetzt unproblematisch.
+
+**Frage an dich:** Wo steht in `before`, wer `fclose` aufrufen muss? Und wo steht es in `after`?
+
 ## 02 value-semantics
 
 ## 03 move
